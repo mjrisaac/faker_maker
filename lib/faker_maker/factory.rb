@@ -5,8 +5,26 @@ module FakerMaker
   # Factories construct instances of a fake
   class Factory
     include Auditable
+
     attr_reader :name, :class_name, :parent, :chaos_selected_attributes
 
+    # Create a new +Factory+ object.
+    #
+    # This method does not automatically register the factory,see
+    # FakerMaker#register_factory
+    #
+    # Options:
+    # - +:class_name+ - override the default class name that FakerMaker will generate.
+    #   This is useful in the case of collisions with existing classes or keywords.
+    # - +:parent+ - the parent factory from which this factory inherits attributes.
+    #   Instances built by this factory will have a class which inherits from the parent's
+    #   class.
+    # - +:naming+ - one of:
+    #   - +nil+ (default) - use field names as the method name and in JSON conversion
+    #   - +:json+ - use field names as the method name but convert when rendering JSON, e.g.
+    #     +hello_world+ becomes +helloWorld+
+    #   - +:json_capitalised+ (or +:json_capitalized+) - as +:json+ but with the first letter
+    #     captialised, e.g. +hello_world+ becomes +HelloWorld+
     def initialize( name, options = {} )
       assert_valid_options options
       @name = name.respond_to?(:to_sym) ? name.to_sym : name.to_s.underscore.to_sym
@@ -26,6 +44,7 @@ module FakerMaker
       @parent = options[:parent]
     end
 
+    # Get the Class of the parent for this factory
     def parent_class
       if @parent
         FakerMaker::Factory.const_get( FakerMaker[@parent].class_name )
@@ -34,6 +53,7 @@ module FakerMaker
       end
     end
 
+    # Attach a FakerMaker::Attribute to this Factory
     def attach_attribute( attribute )
       @attributes << attribute
     end
@@ -42,14 +62,11 @@ module FakerMaker
       @instance ||= instantiate
     end
 
-    def build( attributes: {}, chaos: false, **kwargs )
-      if kwargs.present?
-        validate_deprecated_build(kwargs)
-        attributes = kwargs
-      end
-
+    def build( attributes: {}, chaos: false )
       @instance = nil
       before_build if respond_to? :before_build
+
+      # TODO: make this cleverer to handle nested attributes
       assert_only_known_attributes_for_override( attributes )
 
       assert_chaos_options chaos if chaos
@@ -57,13 +74,19 @@ module FakerMaker
       optional_attributes
       required_attributes
 
-      populate_instance instance, attributes, chaos
+      populate_instance(instance, attributes, chaos:)
       yield instance if block_given?
+
       after_build if respond_to? :after_build
       audit(@instance) if FakerMaker.configuration.audit?
       instance
     end
 
+    # Construct a Class object which will become the parent type of objects built
+    # by this factory.
+    #
+    # The Class object will be created and the attributes added to it. The returned value
+    # is a Ruby Class which can be instantiated.
     def assemble
       if @klass.nil?
         @klass = Class.new parent_class
@@ -91,7 +114,7 @@ module FakerMaker
       unless @json_key_map
         @json_key_map = {}.with_indifferent_access
         @json_key_map.merge!( FakerMaker[parent].json_key_map ) if parent?
-        attributes.each_with_object( @json_key_map ) do |attr, map|
+        attributes(include_embeddings: false).each_with_object( @json_key_map ) do |attr, map|
           key = if attr.translation?
                   attr.translation
                 elsif @naming_strategy
@@ -106,29 +129,88 @@ module FakerMaker
       @json_key_map
     end
 
-    def attribute_names( collection = [] )
-      collection |= FakerMaker[parent].attribute_names( collection ) if parent?
-      collection | @attributes.map( &:name )
+    # Returns a transformed list of attribute names from the `attributes` array.
+    # For each item in the array:
+    # - If the item is a Hash, recursively transforms its keys and values,
+    #   replacing keys with their `name` and applying the same transformation to values.
+    # - Otherwise, replaces the item with its `name`.
+    #
+    # @return [Array] An array (possibly nested) of attribute names, with hashes' keys replaced by their `name`.
+    def attribute_names
+      transform = lambda do |arr|
+        arr.map do |item|
+          if item.is_a?(Hash)
+            item.transform_keys(&:name).transform_values { |v| transform.call(v) }
+          else
+            item.name
+          end
+        end
+      end
+      transform.call(attributes)
     end
 
-    def attributes( collection = [] )
+    # Returns a collection of attributes for the factory, optionally including embedded factory attributes.
+    #
+    # @param collection [Array] an optional array of attributes to start with (default: empty array)
+    # @param include_embeddings [Boolean] whether to include attributes from embedded factories (default: true)
+    # @return [Array] the collection of attributes, possibly including embedded factory attributes as hashes
+    #
+    # If the factory has a parent, its attributes are merged in. Attributes without embedded factories are added
+    # directly. If `include_embeddings` is true, attributes with embedded factories are added as hashes mapping
+    # the attribute to the flattened attributes of its embedded factories. If false, only the attribute itself
+    # is added.
+    def attributes( collection = [], include_embeddings: true )
       collection |= FakerMaker[parent].attributes( collection ) if parent?
-      collection | @attributes
+      collection |= @attributes.reject { |attr| attr.embedded_factories.any? }
+
+      # if there is an embedded factory(-ies) and we are including the embedded factory's
+      # fields, we are going to return a hash
+      if include_embeddings
+        @attributes.select { |attr| attr.embedded_factories.any? }.each do |attr|
+          collection << { attr => attr.embedded_factories.flat_map(&:attributes) }
+        end
+      # if there is an embedded factory(-ies) and we are not including the embedded factory's
+      # fields, just add the attribute into the set of returned fields
+      else
+        collection |= @attributes.select { |attr| attr.embedded_factories.any? }
+      end
+
+      collection
     end
 
+    # Finds and returns the first attribute matching the given name.
+    #
+    # This method searches through the attributes (excluding embeddings) and returns the first attribute
+    # whose name, translation, or the result of applying the naming strategy to its name matches the provided `name`.
+    #
+    # @param name [String] The name to search for among the attributes. Defaults to an empty string.
+    # @return [Object, nil] The first matching attribute object, or nil if no match is found.
     def find_attribute( name = '' )
-      attributes.filter { |a| [a.name, a.translation, @naming_strategy&.name(a.name)].include? name }.first
+      attributes(include_embeddings: false).filter do |a|
+        [a.name, a.translation, @naming_strategy&.name(a.name)].include? name
+      end.first
     end
 
     protected
 
-    def populate_instance( instance, attr_override_values, chaos )
-      FakerMaker[parent].populate_instance instance, attr_override_values, chaos if parent?
+    # Populates the given instance with attribute values, optionally applying chaos/randomization.
+    #
+    # @param instance [Object] The object instance to populate with attribute values.
+    # @param attr_override_values [Hash] A hash of attribute names and their override values.
+    # @param chaos [Boolean, Integer, nil] If truthy, enables chaos mode which may randomize or select a subset
+    # of attributes.
+    # @return [void]
+    #
+    # If the factory has a parent, its attributes are populated first.
+    # Each attribute is assigned a value, either from the override values or generated.
+    # The factory instance is set on the populated object for reference.
+    def populate_instance( instance, attr_override_values, chaos: false )
+      FakerMaker[parent].populate_instance(instance, attr_override_values, chaos:) if parent?
 
       attributes = chaos ? chaos_select(chaos) : @attributes
 
       attributes.each do |attribute|
-        value = value_for_attribute( instance, attribute, attr_override_values )
+        value = value_for_attribute( instance, attribute, attr_override_values, chaos: )
         instance.send "#{attribute.name}=", value
       end
       instance.instance_variable_set( :@fm_factory, self )
@@ -137,7 +219,10 @@ module FakerMaker
     private
 
     def assert_only_known_attributes_for_override( attr_override_values )
-      unknown_attrs = attr_override_values.keys - attribute_names
+      unknown_attrs = attr_override_values.keys - attribute_names.flat_map do |item|
+        item.is_a?(Hash) ? item.keys : item
+      end
+
       issue = "Can't build an instance of '#{class_name}' " \
               "setting '#{unknown_attrs.join( ', ' )}', no such attribute(s)"
       raise FakerMaker::NoSuchAttributeError, issue unless unknown_attrs.empty?
@@ -156,34 +241,44 @@ module FakerMaker
       raise FakerMaker::ChaosConflictingAttributeError, issue unless conflicting_attributes.empty?
     end
 
-    def attribute_hash_overridden_value?( attr, attr_override_values )
+    def overridden_value?( attr, attr_override_values )
       attr_override_values.keys.include?( attr.name )
     end
 
-    def value_for_attribute( instance, attr, attr_override_values )
-      if attribute_hash_overridden_value?( attr, attr_override_values )
+    def value_for_attribute( instance, attr, attr_override_values, chaos: false )
+      if !attr.embedded_factories? && overridden_value?( attr, attr_override_values )
         attr_override_values[attr.name]
       elsif attr.array?
         [].tap do |a|
           attr.cardinality.times do
-            manufacture = manufacture_from_embedded_factory( attr )
-            # if manufacture has been build and there is a block, instance_exec the block
+            manufacture = manufacture_from_embedded_factory( attr, attr_override_values[attr.name.to_sym], chaos: )
+            # if manufacture has been built and there is a block, instance_exec the block
             # otherwise just add the manufacture to the array
             a << (attr.block ? instance.instance_exec(manufacture, &attr.block) : manufacture)
           end
         end
       else
-        manufacture = manufacture_from_embedded_factory( attr )
+        manufacture = manufacture_from_embedded_factory( attr, attr_override_values[attr.name.to_sym], chaos: )
         attr.block ? instance.instance_exec(manufacture, &attr.block) : manufacture
       end
     end
 
-    def manufacture_from_embedded_factory( attr )
+    def manufacture_from_embedded_factory( attr, attributes = {}, chaos: false )
+      attributes ||= {}
       # The name of the embedded factory randomly selected from the list of embedded factories.
-      embedded_factory_name = attr.embedded_factories.sample
+      embedded_factory = attr.embedded_factories.sample
+
+      # filter out attributes for non-chosen embedded factories to avoid triggering
+      # the NoSuchAttribute exception
+      attributes = attr
+                   .embedded_factories
+                   .reject { |e| e == embedded_factory }
+                   .flat_map { |f| pp f.attributes.map(&:name) }
+                   .then { |excl| attributes.delete_if { |k, _v| excl.include?(k) } }
+
       # The object that is being manufactured by the factory.
       # If an embedded factory name is provided, it builds the object using FakerMaker.
-      embedded_factory_name ? FakerMaker[embedded_factory_name].build : nil
+      embedded_factory&.build(attributes:, chaos:)
     end
 
     def instantiate
@@ -263,13 +358,6 @@ module FakerMaker
                                 .concat(selected_inherited_attr)
                                 .concat(selected_attrs).uniq!
       @chaos_selected_attributes
-    end
-
-    def validate_deprecated_build(kwargs)
-      usage = kwargs.each_with_object([]) { |kwarg, result| result << "#{kwarg.first}: #{kwarg.last}" }.join(', ')
-
-      warn "[DEPRECATION] `FM[:#{name}].build(#{usage})` is deprecated. " \
-           "Please use `FM[:#{name}].build(attributes: { #{usage} })` instead."
     end
   end
 end
