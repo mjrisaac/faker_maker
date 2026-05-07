@@ -43,7 +43,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'activesupport', '>= 5.2', '< 9'
 
-  spec.add_development_dependency 'bundler',       '~> 4'
+  spec.add_development_dependency 'bundler',       '>= 2'
   spec.add_development_dependency 'faker',         '~> 3.2'
   spec.add_development_dependency 'guard',         '~> 2.16'
   spec.add_development_dependency 'guard-bundler', '~> 3.0'
