@@ -3,12 +3,12 @@
 module FakerMaker
   # Base module for defining the DSL
   module Base
-    def factory(name, options = {}, &block)
+    def factory(name, options = {}, &)
       factory = FakerMaker.find_factory(name)
       if factory.nil?
         factory = FakerMaker::Factory.new name, options
         proxy = DefinitionProxy.new factory
-        proxy.instance_eval( &block ) if block_given?
+        proxy.instance_eval( & ) if block_given?
         FakerMaker.register_factory factory
       else
         factory

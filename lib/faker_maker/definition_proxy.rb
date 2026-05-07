@@ -13,8 +13,8 @@ module FakerMaker
       @factory
     end
 
-    def method_missing(name, *args, &block)
-      attribute = FakerMaker::Attribute.new name, block, *args
+    def method_missing(name, *, &block)
+      attribute = FakerMaker::Attribute.new(name, block, *)
       @factory.attach_attribute attribute
     end
 

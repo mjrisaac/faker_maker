@@ -155,9 +155,10 @@ module FakerMaker
     # @param include_embeddings [Boolean] whether to include attributes from embedded factories (default: true)
     # @return [Array] the collection of attributes, possibly including embedded factory attributes as hashes
     #
-    # If the factory has a parent, its attributes are merged in. Attributes without embedded factories are added directly.
-    # If `include_embeddings` is true, attributes with embedded factories are added as hashes mapping the attribute to the
-    # flattened attributes of its embedded factories. If false, only the attribute itself is added.
+    # If the factory has a parent, its attributes are merged in. Attributes without embedded factories are added
+    # directly. If `include_embeddings` is true, attributes with embedded factories are added as hashes mapping
+    # the attribute to the flattened attributes of its embedded factories. If false, only the attribute itself
+    # is added.
     def attributes( collection = [], include_embeddings: true )
       collection |= FakerMaker[parent].attributes( collection ) if parent?
       collection |= @attributes.reject { |attr| attr.embedded_factories.any? }
@@ -196,7 +197,8 @@ module FakerMaker
     #
     # @param instance [Object] The object instance to populate with attribute values.
     # @param attr_override_values [Hash] A hash of attribute names and their override values.
-    # @param chaos [Boolean, Integer, nil] If truthy, enables chaos mode which may randomize or select a subset of attributes.
+    # @param chaos [Boolean, Integer, nil] If truthy, enables chaos mode which may randomize or select a subset
+    # of attributes.
     # @return [void]
     #
     # If the factory has a parent, its attributes are populated first.
