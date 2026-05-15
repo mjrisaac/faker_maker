@@ -29,7 +29,9 @@ module FakerMaker
   class NoSuchAttributeError < StandardError; end
   class ChaosConflictingAttributeError < StandardError; end
   class NoSuchAttributeNamingStrategy < StandardError; end
-  # Your code goes here...
+
+  # String used to indicate that a value should be omitted from the generated JSON
+  OMIT = '__OMIT__'.freeze
 
   module_function
 
