@@ -67,10 +67,22 @@ RSpec.describe FakerMaker::Attribute do
     expect( attr.omit?('anything') ).to be true
   end
 
-  it 'can omit nils and empty' do
-    attr = FakerMaker::Attribute.new( :my_name, nil, omit: %i[nil empty] )
+  it 'can omit using the OMIT token' do
+    attr = FakerMaker::Attribute.new( :my_name, nil, omit: FakerMaker::OMIT )
+    expect( attr.omit?(FakerMaker::OMIT) ).to be true
+  end
+
+  it 'does not omit nil or empty when using the OMIT token' do
+    attr = FakerMaker::Attribute.new( :my_name, nil, omit: FakerMaker::OMIT )
+    expect( attr.omit?(nil) ).to be false
+    expect( attr.omit?('') ).to be false
+  end
+
+  it 'can omit nils, empty and the OMIT token' do
+    attr = FakerMaker::Attribute.new( :my_name, nil, omit: [:nil, :empty, FakerMaker::OMIT] )
     expect( attr.omit?('') ).to be true
     expect( attr.omit?(nil) ).to be true
+    expect( attr.omit?(FakerMaker::OMIT) ).to be true
     expect( attr.omit?('anything') ).to be false
   end
 

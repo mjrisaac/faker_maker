@@ -279,6 +279,24 @@ RSpec.describe FakerMaker::Factory do
         factory.build( chaos: %i[required_attribute] )
       end.to raise_error(FakerMaker::ChaosConflictingAttributeError)
     end
+
+    it 'preserves explicitly overridden attributes when chaos is enabled' do
+      factory = FakerMaker::Factory.new( :example_factory )
+      required_attribute = FakerMaker::Attribute.new( :required_attribute, proc { 'required' }, required: true )
+      optional_attribute = FakerMaker::Attribute.new( :optional_attribute, proc { 'optional' } )
+      factory.attach_attribute( required_attribute )
+      factory.attach_attribute( optional_attribute )
+      FakerMaker.register_factory( factory )
+
+      fakes = []
+      10.times do
+        fakes << factory.build( attributes: { optional_attribute: 'overridden' }, chaos: true )
+      end
+
+      fakes.each do |fake|
+        expect( fake.optional_attribute ).to eq 'overridden'
+      end
+    end
   end
 
   describe '#instance' do

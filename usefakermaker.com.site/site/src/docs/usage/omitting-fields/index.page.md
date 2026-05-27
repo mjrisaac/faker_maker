@@ -37,7 +37,7 @@ end
 
 ## Using the omit token
 
-You may want a field that can be excluded, but can also be set to the literal values of `nil` or an empty string/array/hash.
+You may want to exclude a field but still allow it to be set to `nil`, an empty string/array/hash, or any other value.
 
 `FakerMaker::OMIT` is a token value that can provide this flexibility, e.g.
 
