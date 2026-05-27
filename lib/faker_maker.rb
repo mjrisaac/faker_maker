@@ -30,7 +30,8 @@ module FakerMaker
   class ChaosConflictingAttributeError < StandardError; end
   class NoSuchAttributeNamingStrategy < StandardError; end
 
-  # String used to indicate that a value should be omitted from the generated JSON
+  # Token value for marking attributes as omittable from generated JSON.
+  # Usage in factory definitions: `omit: FakerMaker::OMIT`
   OMIT = '__OMIT__'.freeze
 
   module_function

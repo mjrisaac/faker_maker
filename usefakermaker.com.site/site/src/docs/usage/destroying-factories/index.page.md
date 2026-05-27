@@ -25,7 +25,7 @@ FakerMaker.factory :user do
 end
 
 FM[:user].as_json
- => {:name=>"Patsy Stone"}
+=> {:name=>"Patsy Stone"}
 ```
 
 On the other hand, sometimes you really, really want to destroy a factory and start again (especially if you are experimenting in a REPL for example). FakerMaker allows you to shut a factory which will de-register it from the list of available factories and attempt to unload the class it has built from the Ruby interpreter.
@@ -43,7 +43,7 @@ FakerMaker.factory :user do
 end
 
 FM[:user].as_json
- => {:name=>"Patsy Stone", :email=>"patsy@fabulous.co.uk"}
- ```
+=> {:name=>"Patsy Stone", :email=>"patsy@fabulous.co.uk"}
+```
 
  It also provides the `shut_all!` method to remove all factories.

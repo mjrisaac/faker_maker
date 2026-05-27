@@ -23,7 +23,7 @@ v.engine_capacity = 125
 
 v.to_json
 
-=> "{\"wheels\":4,\"colour\":\"blue\",\"engineCapacity\":125}"
+ => "{\"wheels\":4,\"colour\":\"blue\",\"engineCapacity\":125}"
 ```
 
 ## Per-attribute naming

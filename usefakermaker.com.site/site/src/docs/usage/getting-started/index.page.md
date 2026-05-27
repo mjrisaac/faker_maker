@@ -53,5 +53,5 @@ FakerMaker.factory :request do
 end
 
 FakerMaker[:request].build.body
-# => nil
+=> nil
 ```
