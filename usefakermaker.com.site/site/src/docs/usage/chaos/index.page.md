@@ -36,3 +36,15 @@ You can also specify which attributes Chaos can use when instantiating your obje
 ```ruby
 result = FakerMaker[:item].build( chaos: %i[name manufacturer] )
 ```
+
+## Overrides are preserved
+
+When you pass override attributes at build time, Chaos will not touch them. What you pass in is what you get.
+
+```ruby
+result = FakerMaker[:item].build( attributes: { name: 'Specific Name' }, chaos: true )
+result.name
+=> "Specific Name"
+```
+
+Even though `name` is optional and Chaos might otherwise remove it, explicitly overriding it guarantees it will be present with the value you specified.

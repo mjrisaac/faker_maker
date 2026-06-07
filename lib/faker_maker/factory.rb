@@ -208,6 +208,13 @@ module FakerMaker
       FakerMaker[parent].populate_instance(instance, attr_override_values, chaos:) if parent?
 
       attributes = chaos ? chaos_select(chaos) : @attributes
+      # When chaos is enabled, protect explicitly overridden attributes from being affected by chaos;
+      # what you pass in is what you get.
+      if chaos
+        override_attrs = @attributes.select { |attr| attr_override_values.key?( attr.name ) }
+        attributes = (attributes + override_attrs).uniq
+        attributes = @attributes.select { |attr| attributes.include?( attr ) }
+      end
 
       attributes.each do |attribute|
         value = value_for_attribute( instance, attribute, attr_override_values, chaos: )

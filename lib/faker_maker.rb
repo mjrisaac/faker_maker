@@ -29,7 +29,10 @@ module FakerMaker
   class NoSuchAttributeError < StandardError; end
   class ChaosConflictingAttributeError < StandardError; end
   class NoSuchAttributeNamingStrategy < StandardError; end
-  # Your code goes here...
+
+  # Token value for marking attributes as omittable from generated JSON.
+  # Usage in factory definitions: `omit: FakerMaker::OMIT`
+  OMIT = '__OMIT__'.freeze
 
   module_function
 
