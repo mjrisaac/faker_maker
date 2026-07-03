@@ -237,7 +237,9 @@ module FakerMaker
 
     def assert_only_known_and_optional_attributes_for_chaos( chaos_attr_values )
       chaos_attr_values = chaos_attr_values.map(&:to_sym)
-      unknown_attrs = chaos_attr_values - attribute_names
+      unknown_attrs = chaos_attr_values - attribute_names.flat_map do |item|
+        item.is_a?(Hash) ? item.keys : item
+      end
       issue = "Can't build an instance of '#{class_name}' " \
               "setting '#{unknown_attrs.join( ', ' )}', no such attribute(s)"
       raise FakerMaker::NoSuchAttributeError, issue unless unknown_attrs.empty?
@@ -280,12 +282,15 @@ module FakerMaker
       attributes = attr
                    .embedded_factories
                    .reject { |e| e == embedded_factory }
-                   .flat_map { |f| pp f.attributes.map(&:name) }
+                   .flat_map { |f| f.attributes(include_embeddings: false).map(&:name) }
                    .then { |excl| attributes.delete_if { |k, _v| excl.include?(k) } }
 
       # The object that is being manufactured by the factory.
       # If an embedded factory name is provided, it builds the object using FakerMaker.
-      embedded_factory&.build(attributes:, chaos:)
+      # Chaos is converted to a boolean so that child factories inherit random chaos
+      # behaviour without receiving attribute names meant for the parent.
+      embedded_chaos = chaos.is_a?(Array) || chaos.is_a?(String) || chaos.is_a?(Symbol) ? true : chaos
+      embedded_factory&.build(attributes:, chaos: embedded_chaos)
     end
 
     def instantiate
