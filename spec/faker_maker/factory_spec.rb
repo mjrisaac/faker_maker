@@ -299,6 +299,81 @@ RSpec.describe FakerMaker::Factory do
     end
   end
 
+  describe 'embedded factories' do
+    it 'builds a factory with multiple embedded factories' do
+      first_embed = FakerMaker::Factory.new( :first_embed )
+      first_embed.attach_attribute( FakerMaker::Attribute.new( :colour, proc { 'red' } ) )
+      FakerMaker.register_factory( first_embed )
+
+      second_embed = FakerMaker::Factory.new( :second_embed )
+      second_embed.attach_attribute( FakerMaker::Attribute.new( :size, proc { 'large' } ) )
+      FakerMaker.register_factory( second_embed )
+
+      factory = FakerMaker::Factory.new( :multi_embed )
+      factory.attach_attribute( FakerMaker::Attribute.new( :name, proc { 'test' }, required: true ) )
+      factory.attach_attribute( FakerMaker::Attribute.new( :variant, nil, factory: %i[first_embed second_embed] ) )
+      FakerMaker.register_factory( factory )
+
+      expect { factory.build }.not_to raise_error
+
+      fake = factory.build
+      variant = fake.variant
+      expect( variant ).to satisfy { |v| v.respond_to?(:colour) || v.respond_to?(:size) }
+    end
+
+    it 'builds with chaos mode enabled on a factory with embedded factories' do
+      embed = FakerMaker::Factory.new( :chaos_embed )
+      embed.attach_attribute( FakerMaker::Attribute.new( :value, proc { 'embedded' } ) )
+      FakerMaker.register_factory( embed )
+
+      factory = FakerMaker::Factory.new( :chaos_parent )
+      factory.attach_attribute( FakerMaker::Attribute.new( :title, proc { 'hello' }, required: true ) )
+      factory.attach_attribute( FakerMaker::Attribute.new( :child, nil, factory: :chaos_embed ) )
+      factory.attach_attribute( FakerMaker::Attribute.new( :optional_field, proc { 'maybe' } ) )
+      FakerMaker.register_factory( factory )
+
+      expect { factory.build( chaos: true ) }.not_to raise_error
+    end
+
+    it 'allows chaos mode to target an embedded factory attribute' do
+      embed = FakerMaker::Factory.new( :target_embed )
+      embed.attach_attribute( FakerMaker::Attribute.new( :value, proc { 'embedded' } ) )
+      FakerMaker.register_factory( embed )
+
+      factory = FakerMaker::Factory.new( :target_parent )
+      factory.attach_attribute( FakerMaker::Attribute.new( :title, proc { 'hello' }, required: true ) )
+      factory.attach_attribute( FakerMaker::Attribute.new( :child, nil, factory: :target_embed ) )
+      factory.attach_attribute( FakerMaker::Attribute.new( :optional_field, proc { 'maybe' } ) )
+      FakerMaker.register_factory( factory )
+
+      expect { factory.build( chaos: [:child] ) }.not_to raise_error
+
+      fakes = []
+      10.times { fakes << factory.build( chaos: [:child] ) }
+
+      fakes.each { |fake| expect( fake.title ).to eq 'hello' }
+      fakes.each { |fake| expect( fake.optional_field ).to eq 'maybe' }
+      expect( fakes.map(&:child) ).to include nil
+    end
+
+    it 'does not pass parent chaos attribute names to child factories' do
+      embed = FakerMaker::Factory.new( :leak_embed )
+      embed.attach_attribute( FakerMaker::Attribute.new( :inner_value, proc { 'inner' }, required: true ) )
+      FakerMaker.register_factory( embed )
+
+      factory = FakerMaker::Factory.new( :leak_parent )
+      factory.attach_attribute( FakerMaker::Attribute.new( :name, proc { 'parent' }, required: true ) )
+      factory.attach_attribute( FakerMaker::Attribute.new( :child, nil, factory: :leak_embed ) )
+      factory.attach_attribute( FakerMaker::Attribute.new( :optional_thing, proc { 'optional' } ) )
+      FakerMaker.register_factory( factory )
+
+      expect { factory.build( chaos: [:optional_thing] ) }.not_to raise_error
+
+      fake = factory.build( chaos: [:optional_thing] )
+      expect( fake.child.inner_value ).to eq 'inner'
+    end
+  end
+
   describe '#instance' do
     it 'returns the instance' do
       factory = FakerMaker::Factory.new( :factory )
