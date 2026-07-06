@@ -66,7 +66,8 @@ module FakerMaker
       @instance = nil
       before_build if respond_to? :before_build
 
-      # TODO: make this cleverer to handle nested attributes
+      # Only top-level attributes are validated at this point. Nested attribute
+      # overrides are validated by the child factory's own build call.
       assert_only_known_attributes_for_override( attributes )
 
       assert_chaos_options chaos if chaos
@@ -137,38 +138,34 @@ module FakerMaker
       transform_to_names( attributes )
     end
 
-    # Returns the required attributes for this factory, recursing into nested factories
-    # where the parent attribute is also required. Optional parent attributes are ignored.
-    # Mirrors the return structure of `attributes`.
+    # Returns required attributes, recursing into nested factories where the parent attribute
+    # is also required. Optional parent attributes are ignored.
     #
     # @return [Array<FakerMaker::Attribute, Hash>] the required attributes, possibly nested.
     def required_attributes
       collect_filtered_attributes( :required )
     end
 
-    # Returns the required attribute names for this factory, recursing into nested factories
-    # where the parent attribute is also required. Optional parent attributes are ignored.
-    # Mirrors the return structure of `attributes`.
+    # The same as `required_attributes`, only with attribute names (as symbols) returned instead
+    # of attribute objects.
     #
-    # @return [Array<Symbol, Hash>] the required attribute names, possibly nested.
+    # @return [Array<Symbol, Hash>]
     def required_attribute_names
       transform_to_names( required_attributes )
     end
 
-    # Returns the optional attributes for this factory, recursing into nested factories
-    # where the parent attribute is also optional. Required parent attributes are ignored.
-    # Mirrors the return structure of `attributes`.
+    # Returns optional attributes, recursing into nested factories where the parent attribute
+    # is also optional. Required parent attributes are ignored.
     #
     # @return [Array<FakerMaker::Attribute, Hash>] the optional attributes, possibly nested.
     def optional_attributes
       collect_filtered_attributes( :optional )
     end
 
-    # Returns the optional attribute names for this factory, recursing into nested factories
-    # where the parent attribute is also optional. Required parent attributes are ignored.
-    # Mirrors the return structure of `attributes`.
+    # The same as `optional_attributes`, only with attribute names (as symbols) returned instead
+    # of attribute objects.
     #
-    # @return [Array<Symbol, Hash>] the optional attribute names, possibly nested.
+    # @return [Array<Symbol, Hash>]
     def optional_attribute_names
       transform_to_names( optional_attributes )
     end
