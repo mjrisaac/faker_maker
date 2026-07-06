@@ -71,9 +71,6 @@ module FakerMaker
 
       assert_chaos_options chaos if chaos
 
-      optional_attributes
-      required_attributes
-
       populate_instance(instance, attributes, chaos:)
       yield instance if block_given?
 
@@ -137,16 +134,43 @@ module FakerMaker
     #
     # @return [Array] An array (possibly nested) of attribute names, with hashes' keys replaced by their `name`.
     def attribute_names
-      transform = lambda do |arr|
-        arr.map do |item|
-          if item.is_a?(Hash)
-            item.transform_keys(&:name).transform_values { |v| transform.call(v) }
-          else
-            item.name
-          end
-        end
-      end
-      transform.call(attributes)
+      transform_to_names( attributes )
+    end
+
+    # Returns the required attributes for this factory, recursing into nested factories
+    # where the parent attribute is also required. Optional parent attributes are ignored.
+    # Mirrors the return structure of `attributes`.
+    #
+    # @return [Array<FakerMaker::Attribute, Hash>] the required attributes, possibly nested.
+    def required_attributes
+      collect_filtered_attributes( :required )
+    end
+
+    # Returns the required attribute names for this factory, recursing into nested factories
+    # where the parent attribute is also required. Optional parent attributes are ignored.
+    # Mirrors the return structure of `attributes`.
+    #
+    # @return [Array<Symbol, Hash>] the required attribute names, possibly nested.
+    def required_attribute_names
+      transform_to_names( required_attributes )
+    end
+
+    # Returns the optional attributes for this factory, recursing into nested factories
+    # where the parent attribute is also optional. Required parent attributes are ignored.
+    # Mirrors the return structure of `attributes`.
+    #
+    # @return [Array<FakerMaker::Attribute, Hash>] the optional attributes, possibly nested.
+    def optional_attributes
+      collect_filtered_attributes( :optional )
+    end
+
+    # Returns the optional attribute names for this factory, recursing into nested factories
+    # where the parent attribute is also optional. Required parent attributes are ignored.
+    # Mirrors the return structure of `attributes`.
+    #
+    # @return [Array<Symbol, Hash>] the optional attribute names, possibly nested.
+    def optional_attribute_names
+      transform_to_names( optional_attributes )
     end
 
     # Returns a collection of attributes for the factory, optionally including embedded factory attributes.
@@ -245,7 +269,7 @@ module FakerMaker
       raise FakerMaker::NoSuchAttributeError, issue unless unknown_attrs.empty?
 
       # Are any chaos attributes marked as required?
-      conflicting_attributes = chaos_attr_values.select { |attr| required_attributes.map(&:name).include? attr }
+      conflicting_attributes = chaos_attr_values.select { |attr| top_level_required_attributes.map(&:name).include? attr }
       issue = "Can't use chaos on a required attribute: '#{conflicting_attributes}'"
       raise FakerMaker::ChaosConflictingAttributeError, issue unless conflicting_attributes.empty?
     end
@@ -331,14 +355,56 @@ module FakerMaker
       end
     end
 
-    # Selects required @attributes
-    def required_attributes
-      @required_attributes ||= @attributes.select { |attr| attr.required.eql? true }
+    # Selects required attributes defined directly on this factory (non-recursive).
+    # Used internally by chaos logic which handles nesting via recursive build calls.
+    def top_level_required_attributes
+      @top_level_required_attributes ||= @attributes.select { |attr| attr.required.eql? true }
     end
 
-    # Selects optional @attributes
-    def optional_attributes
-      @optional_attributes ||= @attributes.select(&:optional)
+    # Selects optional attributes defined directly on this factory (non-recursive).
+    # Used internally by chaos logic which handles nesting via recursive build calls.
+    def top_level_optional_attributes
+      @top_level_optional_attributes ||= @attributes.select(&:optional)
+    end
+
+    # Recursively transforms a collection of attributes into their symbol names.
+    #
+    # @param collection [Array<FakerMaker::Attribute, Hash>] the attributes to transform.
+    #
+    # @return [Array<Symbol, Hash>] the attribute names with nesting preserved.
+    def transform_to_names( collection )
+      collection.map do |item|
+        if item.is_a?( Hash )
+          item.transform_keys( &:name ).transform_values { |v| transform_to_names( v ) }
+        else
+          item.name
+        end
+      end
+    end
+
+    # Collects attributes filtered by the given type (`:required` or `:optional`), recursing
+    # into embedded factories only when the parent attribute matches the same filter.
+    #
+    # @param filter [Symbol] either `:required` or `:optional`.
+    #
+    # @return [Array<FakerMaker::Attribute, Hash>] the filtered attributes, possibly nested.
+    def collect_filtered_attributes( filter )
+      collection = []
+      collection |= FakerMaker[parent].send( :collect_filtered_attributes, filter ) if parent?
+
+      matching_attrs = @attributes.select { |attr| attr.public_send( filter ).eql?( true ) }
+
+      matching_attrs.each do |attr|
+        if attr.embedded_factories?
+          nested = attr.embedded_factories.flat_map { |f| f.send( :collect_filtered_attributes, filter ) }
+          collection << { attr => nested } if nested.any?
+          collection << attr unless nested.any?
+        else
+          collection << attr
+        end
+      end
+
+      collection
     end
 
     # Randomly selects optional attributes
@@ -347,7 +413,7 @@ module FakerMaker
     # @return [Array]
     def chaos_select( chaos_attrs = [] )
       selected_attrs = []
-      optional_attrs = optional_attributes.dup
+      optional_attrs = top_level_optional_attributes.dup
 
       # Filter specific optional attributes if present
       if chaos_attrs.is_a?(Array) && chaos_attrs.size.positive?
@@ -366,7 +432,7 @@ module FakerMaker
       end
 
       # Concat required, selected and parent attributes
-      @chaos_selected_attributes.concat(required_attributes)
+      @chaos_selected_attributes.concat(top_level_required_attributes)
                                 .concat(selected_inherited_attr)
                                 .concat(selected_attrs).uniq!
       @chaos_selected_attributes
